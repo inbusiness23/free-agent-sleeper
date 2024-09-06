@@ -1,58 +1,71 @@
-require 'spec_helper'
+require 'capybara'
+require 'selenium-webdriver'
 
-YAHOO_USERNAME = 'taco'
-YAHOO_PASSWORD = 'passwordistaco'
-YAHOO_PLAYERS = 'https://football.fantasysports.yahoo.com/f1/726755/players' # Replace with Players page of your league
+Capybara.default_driver = :selenium
+Capybara.app_host = 'https://sleeper.com'
 
-def login_yahoo(username, password)
-  click_link('Sign in') if page.has_link?('Sign in')
-  find('#login-username').set(username)
-  find('#login-signin').click
-  find('#login-passwd').set(password)
-  find('#login-signin').click
-  click_link('Cancel') if page.has_link?('Cancel') # Sometimes Yahoo will ask to secure your account, so we skip this.
-  find('.skip-now').click if page.has_text?('secure my account') # Sometimes Yahoo will ask to add a phone number, so we skip this.
+SLEEPER_USERNAME = 'your_sleeper_username'
+SLEEPER_PASSWORD = 'your_sleeper_password'
+SLEEPER_PLAYERS = 'https://sleeper.com/leagues/YOUR_LEAGUE_ID/waivers'  # Replace with your actual waiver page URL
+
+# Function to login to Sleeper
+def login_sleeper(username, password)
+  visit '/login'  # Visit the Sleeper login page
+
+  # Find and fill in the login form
+  find('input[type="email"]').set(username)
+  find('input[type="password"]').set(password)
+
+  # Click the login button
+  click_button('Log In')
+
+  # Wait for the login to complete (adjust this condition based on what loads after login)
+  page.should_not have_css('.loading-indicator')
 end
 
-def add_drop(free_agent, abbrev, droppable)
-  find('#playersearchtext').set(free_agent)
-  sleep 5 # Sometimes, the autocomplete dropdown interferes with clicking the Search button, so we wait a little
-  click_button('Search')
-  page.should have_css('.First.Last', :count => 1)
-  if page.has_link?(free_agent) && page.has_link?('Add Player')
-    click_link('Add Player')
-    page.should have_text('Select a player to drop')
-    find('td.player', :text => abbrev).find(:xpath, '..').find('button.add-drop-trigger-btn').click
-    if page.has_css?('#submit-add-drop-button[value^="Create claim"]')
-      puts 'Waivers have not cleared'
+# Function to add a free agent and drop a player
+def add_drop(free_agent, droppable)
+  # Search for the free agent
+  find('input[placeholder="Search"]').set(free_agent)
+  sleep 2  # Give time for search results to populate
+  if page.has_css?('.waiver-player', text: free_agent)
+    find('.waiver-player', text: free_agent).click
+    sleep 1
+
+    if page.has_button?('Claim') # Sleeper uses 'Claim' for adding players
+      click_button('Claim')
+
+      # Select player to drop
+      find('.player-drop-checkbox', text: droppable).click
+
+      # Submit the waiver claim
+      click_button('Submit Waiver Claim')
+      puts "Submitted waiver claim to add #{free_agent} and drop #{droppable}"
     else
-      find('#submit-add-drop-button[value="Add %s, Drop %s"]' % [free_agent, droppable]).click
-      puts 'Congratulations! %s was added.' % free_agent
-      sleep 10
+      puts "Sorry, #{free_agent} is not available or already claimed."
     end
   else
-    puts 'Sorry, someone else probably got %s.' % free_agent
+    puts "Could not find #{free_agent} in waivers."
   end
 end
 
-feature "Add free agents to Fantasy Football league" do
+# RSpec Feature to Test Adding and Dropping Players in Sleeper League
+feature "Manage Fantasy Football Team on Sleeper" do
 
   background do
-    visit YAHOO_PLAYERS
-    login_yahoo(YAHOO_USERNAME, YAHOO_PASSWORD) # Replace with your username and password
+    visit SLEEPER_PLAYERS  # Go to the Sleeper waiver page
+    login_sleeper(SLEEPER_USERNAME, SLEEPER_PASSWORD)  # Log in
   end
 
   after(:each) do
     Capybara.current_session.driver.quit
   end
 
-  scenario "Log in and add/drop player" do
-    add_drop('Robby Anderson', 'A. Kamara', 'Alvin Kamara') # Replace with players you want to add and drop
-    # Do not insert additional calls to add_drop() -- Create new scenarios for more players
+  scenario "Add and drop a player" do
+    add_drop('Joe Flacco', 'Deshaun Watson')  # Replace with your desired players
   end
 
-  scenario "Log in and add/drop another player" do
-    add_drop('Terrance West', 'W. Gallman', 'Wayne Gallman') # Replace with players you want to add and drop
+  scenario "Add and drop another player" do
+    add_drop('Leonard Fournette', 'Alex Collins')  # Replace with your desired players
   end
-
 end
